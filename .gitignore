@@ -1,0 +1,9 @@
+.venv/
+venv/
+.env
+app.log
+__pycache__/*
+
+# Ignore Python bytecode
+__pycache__/
+*.py[cod]

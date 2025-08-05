@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Airline Market Demand Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.6"></script>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Loading spinner animation */
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Loading spinner styles */
+        .loading {
+            display: inline-block;
+            width: 1.5rem;
+            height: 1.5rem;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+            margin-left: 0.5rem;
+            vertical-align: middle;
+        }
+        
+        /* Button loading state */
+        button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+    </style>
+    <script>
+        // Auto-refresh page to prevent stale data
+        document.body.addEventListener('htmx:beforeSwap', function(evt) {
+            if (evt.detail.xhr.status === 0) {
+                // Server is down or network error
+                alert('Unable to connect to the server. Please check your connection and try again.');
+                window.location.reload();
+            }
+        });
+    </script>
+</head>
+<body class="bg-gray-100 font-sans min-h-screen">
+    <div class="container mx-auto p-4 md:p-6 max-w-6xl">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">✈️ Airline Market Demand Analyzer</h1>
+            <p class="text-gray-600">Find the best flight deals and analyze market trends</p>
+        </header>
+        <!-- Flash Messages -->
+        {% if error %}
+        <div class="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded relative" role="alert">
+            <span class="block sm:inline">{{ error }}</span>
+        </div>
+        {% endif %}
+        <!-- Input Form -->
+        <div class="mb-8 bg-white rounded-lg shadow-md overflow-hidden">
+            <form id="flight-search-form" class="bg-white p-6 rounded-lg shadow-md mb-8">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Departure Airport -->
+                    <div>
+                        <label for="departure" class="block text-sm font-medium text-gray-700 mb-1">From</label>
+                        <select id="departure" 
+                                name="departure" 
+                                required
+                                class="airport-select w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">Search or select airport</option>
+                            {% for airport in airports %}
+                                <option value="{{ airport.code }}" 
+                                    {% if search_params and search_params.departure == airport.code %}selected{% endif %} 
+                                    data-city="{{ airport.city }}" 
+                                    data-country="{{ airport.country }}"
+                                    data-name="{{ airport.name }}">
+                                    {{ airport.name }} ({{ airport.code }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Destination Airport -->
+                    <div>
+                        <label for="destination" class="block text-sm font-medium text-gray-700 mb-1">To</label>
+                        <select id="destination" 
+                                name="destination" 
+                                required
+                                class="airport-select w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">Search or select airport</option>
+                            {% for airport in airports %}
+                                <option value="{{ airport.code }}" 
+                                    {% if search_params and search_params.destination == airport.code %}selected{% endif %}
+                                    data-city="{{ airport.city }}" 
+                                    data-country="{{ airport.country }}"
+                                    data-name="{{ airport.name }}">
+                                    {{ airport.name }} ({{ airport.code }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <!-- Date Picker -->
+                    <div>
+                        <label for="departure-date" class="block text-sm font-medium text-gray-700 mb-1">Departure Date</label>
+                        <input type="date" 
+                               id="date" 
+                               name="date" 
+                               required
+                               min="{{ default_date }}"
+                               value="{% if search_params and search_params.date %}{{ search_params.date }}{% else %}{{ default_date }}{% endif %}"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div class="flex items-end">
+                        <button type="submit" 
+                                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors flex justify-center items-center"
+                                id="search-button">
+                            <span class="button-text">Search Flights</span>
+                            <span class="loading hidden"></span>
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <!-- Loading Indicator -->
+        <div id="loading" class="loading hidden text-center py-8">
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            <p class="mt-2 text-gray-600">Fetching flight data...</p>
+        </div>
+        <!-- Results Section -->
+        <div id="results">
+        {% if data %}
+            <!-- Flight Data Table -->
+            <div class="bg-white rounded-lg shadow-md overflow-hidden mb-8">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h2 class="text-xl font-semibold text-gray-800">Flight Options</h2>
+                    <p class="text-sm text-gray-500">{{ data|length }} flights found from {{ data[0].departure }} to {{ data[0].destination }} on {{ data[0].date }}</p>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Airline</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Departure</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Arrival</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Price (AUD)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% for row in data %}
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="flex items-center">
+                                        <div class="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                            <span class="text-blue-600 font-medium">{{ row.airline|first|upper }}</span>
+                                        </div>
+                                        <div class="ml-4">
+                                            <div class="text-sm font-medium text-gray-900">{{ row.airline }}</div>
+                                            <div class="text-sm text-gray-500">{{ row.flight_number if 'flight_number' in row else 'Direct' }}</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm font-medium text-gray-900">{{ row.departure_time }}</div>
+                                    <div class="text-sm text-gray-500">{{ row.departure }}</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm font-medium text-gray-900">{{ row.arrival_time }}</div>
+                                    <div class="text-sm text-gray-500">{{ row.destination }}</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ row.duration }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                    <span class="text-lg font-bold text-blue-600">${{ "%.2f"|format(row.price) }}</span>
+                                    <button type="button" class="ml-2 bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 transition">
+                                        Select
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <!-- Insights Section -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <!-- Price Trends Card -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Price Trends</h3>
+                    <div class="h-64">
+                        <canvas id="priceChart"></canvas>
+                    </div>
+                </div>
+                <!-- Popular Routes Card -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Popular Routes</h3>
+                    <div class="space-y-4">
+                        {% for route, count in insights.popular_routes %}
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="font-medium">{{ route }}</span>
+                                <span class="text-gray-600">{{ count }} flights</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                {% set max_count = (insights.popular_routes|first)[1] %}
+                            {% set width_percent = (count / max_count * 100)|round(1) %}
+                            <div class="bg-blue-600 h-2 rounded-full" style="width: {{ width_percent }}%;"></div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <!-- High Demand Periods -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">High Demand Periods</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {% for date, price in insights.high_demand_periods %}
+                    <div class="border rounded-lg p-4 text-center">
+                        <div class="text-sm text-gray-500">{{ date }}</div>
+                        <div class="text-xl font-bold text-blue-600">${{ "%.2f"|format(price) }}</div>
+                        <div class="text-xs text-gray-500">Average Price</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>  <!-- Close #results div -->
+        <style>
+            /* Style for Select2 dropdowns */
+            .select2-container--default .select2-selection--single {
+                height: 42px;
+                padding: 8px 12px;
+                border: 1px solid #d1d5db;
+                border-radius: 0.375rem;
+            }
+            .select2-container--default .select2-selection--single .select2-selection__arrow {
+                height: 40px;
+            }
+            .select2-container--default .select2-selection--single .select2-selection__rendered {
+                line-height: 24px;
+                padding: 0;
+            }
+            .select2-container--default .select2-results > .select2-results__options {
+                max-height: 250px;
+            }
+            .select2-results__option {
+                padding: 8px 12px;
+            }
+            .select2-container--default .select2-selection--single:focus {
+                outline: none;
+                border-color: #3b82f6;
+                box-shadow: 0 0 0 1px #3b82f6;
+            }
+        </style>
+
+        <script>
+            // Initialize Select2 for airport dropdowns
+            document.addEventListener('DOMContentLoaded', function() {
+                // Function to initialize Select2 dropdowns
+                function initializeSelect2() {
+                    $('.airport-select').select2({
+                        placeholder: 'Select an airport',
+                        allowClear: true,
+                        width: '100%',
+                        templateResult: formatAirport,
+                        templateSelection: formatAirport,
+                        // Ensure we only submit the three-letter code
+                        data: Array.from($('.airport-select option')).map(option => ({
+                            id: option.value.split('-')[0], // Only use first part before hyphen
+                            text: option.text,
+                            element: option
+                        })),
+                        matcher: function(params, data) {
+                            // If there are no search terms, return all of the data
+                            if ($.trim(params.term) === '') {
+                                return data;
+                            }
+
+                            // Check if the option text contains the search term
+                            if (data.text && data.text.toUpperCase().indexOf(params.term.toUpperCase()) > -1) {
+                                return data;
+                            }
+
+                            // Check if the option's data attributes contain the search term
+                            if (data.element) {
+                                const city = $(data.element).data('city') || '';
+                                const country = $(data.element).data('country') || '';
+                                const code = $(data.element).data('code') || '';
+                                const name = $(data.element).data('name') || '';
+                                
+                                const searchTerm = params.term.toUpperCase();
+                                if (city.toUpperCase().includes(searchTerm) || 
+                                    country.toUpperCase().includes(searchTerm) ||
+                                    code.toUpperCase().includes(searchTerm) ||
+                                    name.toUpperCase().includes(searchTerm)) {
+                                    return data;
+                                }
+                            }
+
+                            // Return null if the term should not be displayed
+                            return null;
+                        }
+                    });
+                }
+
+                // Format how the selected option is displayed
+                function formatAirport(airport) {
+                    if (!airport.id) return airport.text;
+                    
+                    var $option = $(airport.element);
+                    var city = $option.data('city') || '';
+                    var country = $option.data('country') || '';
+                    var name = $option.data('name') || airport.text.split(' - ')[0];
+                    var code = airport.id;
+                    
+                    return $(
+                        '<div class="flex items-center">' +
+                            '<div class="font-medium text-gray-900">' + name + ' (' + code + ')</div>' +
+                            '<div class="ml-2 text-sm text-gray-500">' + city + ', ' + country + '</div>' +
+                        '</div>'
+                    );
+                }
+
+                
+                // Initialize Select2 after the DOM is fully loaded
+                $(document).ready(function() {
+                    initializeSelect2();
+                });
+
+                // Custom matcher for better search
+                function matchAirports(params, data) {
+                    // If there are no search terms, return all of the data
+                    if ($.trim(params.term) === '') {
+                        return data;
+                    }
+
+                    // Do not display the 'Searching...' message
+                    if (data.loading) {
+                        return null;
+                    }
+
+                    // Get the search term in lowercase
+                    var searchTerm = params.term.toLowerCase().trim();
+                    
+                    // Get the airport data
+                    var $option = $(data.element);
+                    var name = ($option.data('name') || '').toLowerCase();
+                    var city = ($option.data('city') || '').toLowerCase();
+                    var country = ($option.data('country') || '').toLowerCase();
+                    var code = data.id.toLowerCase();
+                    
+                    // Combine all searchable fields
+                    var searchableText = (name + ' ' + city + ' ' + country + ' ' + code).toLowerCase();
+                    
+                    // Check if the search term is found in any of the fields
+                    return searchableText.indexOf(searchTerm) > -1 ? data : null;
+
+                    // Check if all search terms match any part of the airport data
+                    var matchesAll = searchTerms.every(function(term) {
+                        return text.includes(term) || 
+                               city.includes(term) || 
+                               country.includes(term) ||
+                               code.includes(term);
+                    });
+
+                    if (matchesAll) {
+                        return data;
+                    }
+
+                    return null;
+                }
+                // Form submission handler
+                const form = document.getElementById('flight-search-form');
+                const searchButton = document.getElementById('search-button');
+                const loadingIndicator = document.querySelector('.loading');
+                const buttonText = document.querySelector('.button-text');
+                
+                if (form) {
+                    form.addEventListener('submit', async function(e) {
+                        e.preventDefault();
+                        
+                        // Ensure both fields are selected
+                        const departure = $('#departure').val();
+                        const destination = $('#destination').val();
+                        const date = $('#date').val() || new Date().toISOString().split('T')[0];
+                        
+                        if (!departure || !destination) {
+                            alert('Please select both departure and destination airports');
+                            return false;
+                        }
+                        
+                        // Extract just the three-letter IATA code (in case it's in format 'CODE-EXTRA')
+                        const departureCode = departure.split('-')[0];
+                        const destinationCode = destination.split('-')[0];
+                        
+                        // Show loading state
+                        searchButton.disabled = true;
+                        loadingIndicator.classList.remove('hidden');
+                        buttonText.textContent = 'Searching...';
+                        
+                        try {
+                            // Format the date to YYYY-MM-DD if not already
+                            const formattedDate = new Date(date).toISOString().split('T')[0];
+                            
+                            // Create the request body matching FlightSearchParams model
+                            const requestBody = {
+                                departure: departureCode.trim(),
+                                destination: destinationCode.trim(),
+                                date: formattedDate,
+                                // return_date: null,
+                                // adults: 1,
+                                // children: 0,
+                                // cabin_class: "economy",
+                                // currency: "USD"
+                            };
+                            
+                            console.log('Sending request:', {
+                                url: '/api/flights/search',
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json'
+                                },
+                                body: requestBody
+                            });
+                            
+                            // Send the request directly using fetch
+                            const response = await fetch('/api/flights/search', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json'
+                                },
+                                body: JSON.stringify(requestBody)
+                            });
+                            
+                            if (!response.ok) {
+                                const errorData = await response.json().catch(() => ({}));
+                                console.error('API Error:', {
+                                    status: response.status,
+                                    statusText: response.statusText,
+                                    errorData
+                                });
+                                throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                            }
+                            
+                            const data = await response.json();
+                            // Update the results section with the response
+                            document.getElementById('results').innerHTML = data.html || 'No results found';
+                            
+                        } catch (error) {
+                            console.error('Error:', error);
+                            if (error.response) {
+                                console.error('Response error:', await error.response.text());
+                            }
+                            alert('An error occurred while searching for flights. Please try again.');
+                        } finally {
+                            // Hide loading state
+                            searchButton.disabled = false;
+                            loadingIndicator.classList.add('hidden');
+                            buttonText.textContent = 'Search Flights';
+                        }
+                    });
+                }
+                
+                // HTMX after request handler
+                document.body.addEventListener('htmx:afterRequest', function() {
+                    // Hide loading state
+                    if (searchButton) searchButton.disabled = false;
+                    if (loadingIndicator) loadingIndicator.classList.add('hidden');
+                    if (buttonText) buttonText.textContent = 'Search Flights';
+                });
+                
+                // Only initialize chart if chart_data is available
+                {% if chart_data is defined and chart_data %}
+                let chartData;
+                try {
+                    chartData = JSON.parse('{{ {"labels": chart_data.labels, "data": chart_data.data}|tojson|safe }}');
+                    
+                    // Price Trends Chart
+                    const ctx = document.getElementById('priceChart');
+                    if (ctx) {
+                        new Chart(ctx.getContext('2d'), {
+                            type: 'line',
+                            data: {
+                                labels: chartData.labels,
+                                datasets: [{
+                                    label: 'Average Price (AUD)',
+                                    data: chartData.data,
+                                    borderColor: 'rgb(37, 99, 235)',
+                                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                                    tension: 0.3,
+                                    fill: true,
+                                    pointBackgroundColor: 'white',
+                                    pointBorderColor: 'rgb(37, 99, 235)',
+                                    pointHoverRadius: 6,
+                                    pointHoverBackgroundColor: 'rgb(37, 99, 235)',
+                                    pointHoverBorderColor: 'white',
+                                    pointHoverBorderWidth: 2,
+                                    pointHitRadius: 10
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: { display: false },
+                                    tooltip: {
+                                        backgroundColor: 'white',
+                                        titleColor: '#1F2937',
+                                        bodyColor: '#4B5563',
+                                        borderColor: '#E5E7EB',
+                                        borderWidth: 1,
+                                        padding: 12,
+                                        displayColors: false,
+                                        callbacks: {
+                                            label: function(context) {
+                                                return 'AUD ' + context.raw.toFixed(2);
+                                            }
+                                        }
+                                    }
+                                },
+                                scales: {
+                                    y: {
+                                        beginAtZero: true,
+                                        grid: {
+                                            color: 'rgba(0, 0, 0, 0.05)'
+                                        },
+                                        ticks: {
+                                            callback: function(value) {
+                                                return '$' + value;
+                                            }
+                                        }
+                                    },
+                                    x: {
+                                        grid: {
+                                            display: false,
+                                        }
+                                    }
+                                },
+                                interaction: {
+                                    intersect: false,
+                                    mode: 'index'
+                                },
+                                elements: {
+                                    line: {
+                                        borderWidth: 2
+                                    },
+                                    point: {
+                                        radius: 4,
+                                        hoverRadius: 6,
+                                        hoverBorderWidth: 2
+                                    }
+                                },
+                                animation: {
+                                    duration: 1000,
+                                    easing: 'easeInOutQuart'
+                                },
+                                layout: {
+                                    padding: {
+                                        top: 10,
+                                        right: 15,
+                                        bottom: 10,
+                                        left: 15
+                                    }
+                                },
+                                onHover: (event, chartElement) => {
+                                    event.native.target.style.cursor = chartElement[0] ? 'pointer' : 'default';
+                                },
+                                onClick: (events, elements) => {
+                                    if (elements.length > 0) {
+                                        const index = elements[0].index;
+                                        const label = chartData.labels[index];
+                                        const value = chartData.data[index];
+                                        console.log(`Clicked on ${label}: $${value}`);
+                                    }
+                                }
+                            }
+                        });
+                    }
+                } catch (e) {
+                    console.error('Error initializing chart:', e);
+                }
+                {% endif %}  <!-- Close if chart_data is defined -->
+                
+                // Form submission and HTMX handlers
+                document.addEventListener('DOMContentLoaded', function() {
+                    const form = document.querySelector('form');
+                    const loadingElement = document.getElementById('loading');
+                    
+                    if (form) {
+                        // Handle form submission
+                        form.addEventListener('submit', function() {
+                            // Show loading indicator
+                            if (loadingElement) {
+                                loadingElement.classList.remove('hidden');
+                            }
+                            
+                            // Disable submit button and show loading spinner
+                            const button = this.querySelector('button[type="submit"]');
+                            const loadingSpinner = button ? button.querySelector('.loading') : null;
+                            if (button && loadingSpinner) {
+                                loadingSpinner.classList.remove('hidden');
+                                button.disabled = true;
+                            }
+                        });
+                    }
+                    
+                    // Handle HTMX after request
+                    document.body.addEventListener('htmx:afterRequest', function(evt) {
+                        // Hide loading indicator
+                        if (loadingElement) {
+                            loadingElement.classList.add('hidden');
+                        }
+                        
+                        // Re-enable submit button and hide loading spinner
+                        const button = document.querySelector('button[type="submit"]');
+                        if (button) {
+                            const loadingSpinner = button.querySelector('.loading');
+                            if (loadingSpinner) {
+                                loadingSpinner.classList.add('hidden');
+                            }
+                            button.disabled = false;
+                        }
+                        
+                        // Scroll to results if successful
+                        if (evt.detail && evt.detail.successful) {
+                            const results = document.getElementById('results');
+                            if (results) {
+                                results.scrollIntoView({ behavior: 'smooth' });
+                            }
+                        }
+                    });
+                    
+                    // Initialize date picker with min date
+                    const dateInput = document.querySelector('input[type="date"]');
+                    if (dateInput && !dateInput.value) {
+                        const today = new Date();
+                        const nextWeek = new Date(today);
+                        nextWeek.setDate(today.getDate() + 7);
+                        const nextWeekFormatted = nextWeek.toISOString().split('T')[0];
+                        dateInput.value = nextWeekFormatted;
+                        
+                        // Set min date to today
+                        const todayFormatted = today.toISOString().split('T')[0];
+                        dateInput.min = todayFormatted;
+                    }
+                });
+            </script>
+        {% endif %}  <!-- Close if data block -->
+    </div>  <!-- Close container div -->
+</body>
+</html>
