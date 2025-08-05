@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     
     # Gemini AI Settings
     GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY")
+    OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
     
     # Application Paths
     BASE_DIR: Path = Path(__file__).parent.parent

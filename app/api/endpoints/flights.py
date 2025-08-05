@@ -8,6 +8,7 @@ import pandas as pd
 import traceback
 
 from app.config import settings
+templates = Jinja2Templates(directory=getattr(settings, 'TEMPLATES_DIR', 'templates'))
 from app.models.flight import FlightSearchParams, FlightResponse, FlightBase
 from app.models.analysis import AnalysisRequest, AnalysisResponse
 from app.core.flight_scraper import FlightScraper
@@ -41,30 +42,18 @@ async def get_airports():
 
 from fastapi import Body, Query, Form
 
-@router.post("/search", response_model=FlightResponse)
+@router.post("/search")#, response_model=FlightResponse)
 async def search_flights(
-    params: Optional[FlightSearchParams] = Body(None),
-    departure: Optional[str] = Form(None),
-    destination: Optional[str] = Form(None),
-    date: Optional[str] = Form(None)
+    body: Dict[str, Any] = Body(...)
 ):
-    """Search for flights between two locations on a specific date (JSON or form)."""
-    # Determine source of params
-    if params is None:
-        if not (departure and destination and date):
-            raise HTTPException(status_code=422, detail="Missing required flight search parameters")
-        params = FlightSearchParams(departure=departure, destination=destination, date=date)
-    """Search for flights between two locations on a specific date"""
+    """Search for flights between two locations on a specific date (JSON body)."""
+    departure = body.get('departure')
+    destination = body.get('destination')
+    date = body.get('date')
+    if not (departure and destination and date):
+        raise HTTPException(status_code=422, detail="Missing required flight search parameters")
+    params = FlightSearchParams(departure=departure, destination=destination, date=date)
 
-    """
-    Search for flights between two locations on a specific date
-    
-    Args:
-        params: Flight search parameters
-        
-    Returns:
-        FlightResponse with list of flights and metadata
-    """
     try:
         logger.info(f"Searching flights: {params.departure} -> {params.destination} on {params.date}")
         
@@ -72,26 +61,20 @@ async def search_flights(
         scraper = FlightScraper()
         
         # Scrape flight data
-        flights_data, debug_info = await scraper.scrape_google_flights(params)
+        # flights_data, debug_info = await scraper.scrape_google_flights(params)
+        flights = await scraper.scrape_google_flights(params)
+        print("flights", flights)
         
-        if not flights_data:
+        if not flights:
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
-                content={"detail": "No flights found for the specified criteria"}
+                content={"detail": "Select other cities"}
             )
         
-        # Convert to FlightBase models
-        flights = [FlightBase(**flight) for flight in flights_data]
+        # # Convert to FlightBase models
+        # flights = [FlightBase(**flight) for flight in flights_data]
         
-        return {
-            "success": True,
-            "data": flights,
-            "total": len(flights),
-            "page": 1,
-            "size": len(flights),
-            "message": f"Found {len(flights)} flights"
-        }
-        
+        return flights
     except Exception as e:
         logger.error(f"Error searching flights: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(

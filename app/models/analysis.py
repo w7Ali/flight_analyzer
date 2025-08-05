@@ -52,11 +52,8 @@ class FlightInsights(BaseModel):
     generated_at: datetime = Field(default_factory=datetime.utcnow)
 
 class AnalysisRequest(BaseModel):
-    """Request model for flight analysis"""
+    """Request model for flight analysis (only flights allowed)"""
     flights: List[Dict[str, Any]]
-    include_trends: bool = True
-    include_airline_analysis: bool = True
-    include_recommendations: bool = True
 
 class AnalysisResponse(BaseModel):
     """Response model for flight analysis"""
