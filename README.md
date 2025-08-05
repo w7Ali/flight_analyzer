@@ -1,6 +1,5 @@
 # Flight Analyzer
-![alt text](debug/flight_results_20250805_150213.png)
-
+![alt text](debug/flight_results_20250806_021311.png)
 A FastAPI-based web application for analyzing flight data with AI-powered insights using Google's Gemini AI.
 
 ## Features
