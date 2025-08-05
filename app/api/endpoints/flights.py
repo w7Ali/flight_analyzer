@@ -40,31 +40,18 @@ async def get_airports():
 
 
 from fastapi import Body, Query, Form
-
-@router.post("/search", response_model=FlightResponse)
+@router.post("/search")#, response_model=FlightResponse)
 async def search_flights(
-    params: Optional[FlightSearchParams] = Body(None),
-    departure: Optional[str] = Form(None),
-    destination: Optional[str] = Form(None),
-    date: Optional[str] = Form(None)
+    body: Dict[str, Any] = Body(...)
 ):
-    """Search for flights between two locations on a specific date (JSON or form)."""
-    # Determine source of params
-    if params is None:
-        if not (departure and destination and date):
-            raise HTTPException(status_code=422, detail="Missing required flight search parameters")
-        params = FlightSearchParams(departure=departure, destination=destination, date=date)
-    """Search for flights between two locations on a specific date"""
+    """Search for flights between two locations on a specific date (JSON body)."""
+    departure = body.get('departure')
+    destination = body.get('destination')
+    date = body.get('date')
+    if not (departure and destination and date):
+        raise HTTPException(status_code=422, detail="Missing required flight search parameters")
+    params = FlightSearchParams(departure=departure, destination=destination, date=date)
 
-    """
-    Search for flights between two locations on a specific date
-    
-    Args:
-        params: Flight search parameters
-        
-    Returns:
-        FlightResponse with list of flights and metadata
-    """
     try:
         logger.info(f"Searching flights: {params.departure} -> {params.destination} on {params.date}")
         
