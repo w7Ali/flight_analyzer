@@ -35,12 +35,37 @@
             opacity: 0.7;
             cursor: not-allowed;
         }
+
+        /* Style for Select2 dropdowns */
+        .select2-container--default .select2-selection--single {
+            height: 42px;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+        }
+        .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 40px;
+        }
+        .select2-container--default .select2-selection--single .select2-selection__rendered {
+            line-height: 24px;
+            padding: 0;
+        }
+        .select2-container--default .select2-results > .select2-results__options {
+            max-height: 250px;
+        }
+        .select2-results__option {
+            padding: 8px 12px;
+        }
+        .select2-container--default .select2-selection--single:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 1px #3b82f6;
+        }
     </style>
     <script>
         // Auto-refresh page to prevent stale data
         document.body.addEventListener('htmx:beforeSwap', function(evt) {
             if (evt.detail.xhr.status === 0) {
-                // Server is down or network error
                 alert('Unable to connect to the server. Please check your connection and try again.');
                 window.location.reload();
             }
@@ -133,7 +158,7 @@
         </div>
         <!-- Results Section -->
         <div id="results">
-        {% if data %}
+            {% if data %}
             <!-- Flight Data Table -->
             <div class="bg-white rounded-lg shadow-md overflow-hidden mb-8">
                 <div class="px-6 py-4 border-b border-gray-200">
@@ -210,8 +235,8 @@
                             </div>
                             <div class="w-full bg-gray-200 rounded-full h-2">
                                 {% set max_count = (insights.popular_routes|first)[1] %}
-                            {% set width_percent = (count / max_count * 100)|round(1) %}
-                            <div class="bg-blue-600 h-2 rounded-full" style="width: {{ width_percent }}%;"></div>
+                                {% set width_percent = (count / max_count * 100)|round(1) %}
+                                <div class="bg-blue-600 h-2 rounded-full" style="width: {{ width_percent }}%;"></div>
                             </div>
                         </div>
                         {% endfor %}
@@ -231,35 +256,8 @@
                     {% endfor %}
                 </div>
             </div>
+            {% endif %}
         </div>  <!-- Close #results div -->
-        <style>
-            /* Style for Select2 dropdowns */
-            .select2-container--default .select2-selection--single {
-                height: 42px;
-                padding: 8px 12px;
-                border: 1px solid #d1d5db;
-                border-radius: 0.375rem;
-            }
-            .select2-container--default .select2-selection--single .select2-selection__arrow {
-                height: 40px;
-            }
-            .select2-container--default .select2-selection--single .select2-selection__rendered {
-                line-height: 24px;
-                padding: 0;
-            }
-            .select2-container--default .select2-results > .select2-results__options {
-                max-height: 250px;
-            }
-            .select2-results__option {
-                padding: 8px 12px;
-            }
-            .select2-container--default .select2-selection--single:focus {
-                outline: none;
-                border-color: #3b82f6;
-                box-shadow: 0 0 0 1px #3b82f6;
-            }
-        </style>
-
         <script>
             // Initialize Select2 for airport dropdowns
             document.addEventListener('DOMContentLoaded', function() {
@@ -271,30 +269,23 @@
                         width: '100%',
                         templateResult: formatAirport,
                         templateSelection: formatAirport,
-                        // Ensure we only submit the three-letter code
                         data: Array.from($('.airport-select option')).map(option => ({
-                            id: option.value.split('-')[0], // Only use first part before hyphen
+                            id: option.value,
                             text: option.text,
                             element: option
                         })),
                         matcher: function(params, data) {
-                            // If there are no search terms, return all of the data
                             if ($.trim(params.term) === '') {
                                 return data;
                             }
-
-                            // Check if the option text contains the search term
                             if (data.text && data.text.toUpperCase().indexOf(params.term.toUpperCase()) > -1) {
                                 return data;
                             }
-
-                            // Check if the option's data attributes contain the search term
                             if (data.element) {
                                 const city = $(data.element).data('city') || '';
                                 const country = $(data.element).data('country') || '';
                                 const code = $(data.element).data('code') || '';
                                 const name = $(data.element).data('name') || '';
-                                
                                 const searchTerm = params.term.toUpperCase();
                                 if (city.toUpperCase().includes(searchTerm) || 
                                     country.toUpperCase().includes(searchTerm) ||
@@ -303,8 +294,6 @@
                                     return data;
                                 }
                             }
-
-                            // Return null if the term should not be displayed
                             return null;
                         }
                     });
@@ -313,13 +302,11 @@
                 // Format how the selected option is displayed
                 function formatAirport(airport) {
                     if (!airport.id) return airport.text;
-                    
                     var $option = $(airport.element);
                     var city = $option.data('city') || '';
                     var country = $option.data('country') || '';
                     var name = $option.data('name') || airport.text.split(' - ')[0];
                     var code = airport.id;
-                    
                     return $(
                         '<div class="flex items-center">' +
                             '<div class="font-medium text-gray-900">' + name + ' (' + code + ')</div>' +
@@ -328,54 +315,11 @@
                     );
                 }
 
-                
-                // Initialize Select2 after the DOM is fully loaded
+                // Initialize Select2
                 $(document).ready(function() {
                     initializeSelect2();
                 });
 
-                // Custom matcher for better search
-                function matchAirports(params, data) {
-                    // If there are no search terms, return all of the data
-                    if ($.trim(params.term) === '') {
-                        return data;
-                    }
-
-                    // Do not display the 'Searching...' message
-                    if (data.loading) {
-                        return null;
-                    }
-
-                    // Get the search term in lowercase
-                    var searchTerm = params.term.toLowerCase().trim();
-                    
-                    // Get the airport data
-                    var $option = $(data.element);
-                    var name = ($option.data('name') || '').toLowerCase();
-                    var city = ($option.data('city') || '').toLowerCase();
-                    var country = ($option.data('country') || '').toLowerCase();
-                    var code = data.id.toLowerCase();
-                    
-                    // Combine all searchable fields
-                    var searchableText = (name + ' ' + city + ' ' + country + ' ' + code).toLowerCase();
-                    
-                    // Check if the search term is found in any of the fields
-                    return searchableText.indexOf(searchTerm) > -1 ? data : null;
-
-                    // Check if all search terms match any part of the airport data
-                    var matchesAll = searchTerms.every(function(term) {
-                        return text.includes(term) || 
-                               city.includes(term) || 
-                               country.includes(term) ||
-                               code.includes(term);
-                    });
-
-                    if (matchesAll) {
-                        return data;
-                    }
-
-                    return null;
-                }
                 // Form submission handler
                 const form = document.getElementById('flight-search-form');
                 const searchButton = document.getElementById('search-button');
@@ -386,19 +330,29 @@
                     form.addEventListener('submit', async function(e) {
                         e.preventDefault();
                         
-                        // Ensure both fields are selected
+                        // Get form values
                         const departure = $('#departure').val();
                         const destination = $('#destination').val();
-                        const date = $('#date').val() || new Date().toISOString().split('T')[0];
+                        const dateValue = $('#date').val();
                         
+                        // Validate inputs
                         if (!departure || !destination) {
                             alert('Please select both departure and destination airports');
                             return false;
                         }
+                        if (departure === destination) {
+                            alert('Departure and destination airports cannot be the same');
+                            return false;
+                        }
+                        if (!dateValue || new Date(dateValue) < new Date().setHours(0, 0, 0, 0)) {
+                            alert('Please select a valid future date');
+                            return false;
+                        }
                         
-                        // Extract just the three-letter IATA code (in case it's in format 'CODE-EXTRA')
-                        const departureCode = departure.split('-')[0];
-                        const destinationCode = destination.split('-')[0];
+                        // Extract three-letter IATA codes
+                        const departureCode = departure.split('-')[0].trim();
+                        const destinationCode = destination.split('-')[0].trim();
+                        const formattedDate = new Date(dateValue).toISOString().split('T')[0];
                         
                         // Show loading state
                         searchButton.disabled = true;
@@ -406,33 +360,15 @@
                         buttonText.textContent = 'Searching...';
                         
                         try {
-                            // Format the date to YYYY-MM-DD if not already
-                            const formattedDate = new Date(date).toISOString().split('T')[0];
-                            
-                            // Create the request body matching FlightSearchParams model
+                            // Create request body
                             const requestBody = {
-                                departure: departureCode.trim(),
-                                destination: destinationCode.trim(),
-                                date: formattedDate,
-                                // return_date: null,
-                                // adults: 1,
-                                // children: 0,
-                                // cabin_class: "economy",
-                                // currency: "USD"
+                                departure: departureCode,
+                                destination: destinationCode,
+                                date: formattedDate
                             };
                             
-                            console.log('Sending request:', {
-                                url: '/api/flights/search',
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Accept': 'application/json'
-                                },
-                                body: requestBody
-                            });
-                            
-                            // Send the request directly using fetch
-                            const response = await fetch('/api/flights/search', {
+                            // Send request
+                            const response = await fetch('http://localhost:9000/api/flights/search', {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
@@ -443,23 +379,27 @@
                             
                             if (!response.ok) {
                                 const errorData = await response.json().catch(() => ({}));
-                                console.error('API Error:', {
-                                    status: response.status,
-                                    statusText: response.statusText,
-                                    errorData
-                                });
-                                throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                                const errorMessage = errorData.detail || `Error ${response.status}: ${response.statusText}`;
+                                alert(`Flight search failed: ${errorMessage}`);
+                                throw new Error(errorMessage);
                             }
                             
                             const data = await response.json();
-                            // Update the results section with the response
-                            document.getElementById('results').innerHTML = data.html || 'No results found';
+                            // Handle response
+                            if (data.html) {
+                                document.getElementById('results').innerHTML = data.html;
+                            } else {
+                                document.getElementById('results').innerHTML = 'No results found';
+                            }
+                            
+                            // Scroll to results
+                            const results = document.getElementById('results');
+                            if (results) {
+                                results.scrollIntoView({ behavior: 'smooth' });
+                            }
                             
                         } catch (error) {
                             console.error('Error:', error);
-                            if (error.response) {
-                                console.error('Response error:', await error.response.text());
-                            }
                             alert('An error occurred while searching for flights. Please try again.');
                         } finally {
                             // Hide loading state
@@ -472,7 +412,6 @@
                 
                 // HTMX after request handler
                 document.body.addEventListener('htmx:afterRequest', function() {
-                    // Hide loading state
                     if (searchButton) searchButton.disabled = false;
                     if (loadingIndicator) loadingIndicator.classList.add('hidden');
                     if (buttonText) buttonText.textContent = 'Search Flights';
@@ -483,8 +422,6 @@
                 let chartData;
                 try {
                     chartData = JSON.parse('{{ {"labels": chart_data.labels, "data": chart_data.data}|tojson|safe }}');
-                    
-                    // Price Trends Chart
                     const ctx = document.getElementById('priceChart');
                     if (ctx) {
                         new Chart(ctx.getContext('2d'), {
@@ -530,47 +467,21 @@
                                 scales: {
                                     y: {
                                         beginAtZero: true,
-                                        grid: {
-                                            color: 'rgba(0, 0, 0, 0.05)'
-                                        },
-                                        ticks: {
-                                            callback: function(value) {
-                                                return '$' + value;
-                                            }
-                                        }
+                                        grid: { color: 'rgba(0, 0, 0, 0.05)' },
+                                        ticks: { callback: function(value) { return '$' + value; } }
                                     },
-                                    x: {
-                                        grid: {
-                                            display: false,
-                                        }
-                                    }
+                                    x: { grid: { display: false } }
                                 },
                                 interaction: {
                                     intersect: false,
                                     mode: 'index'
                                 },
                                 elements: {
-                                    line: {
-                                        borderWidth: 2
-                                    },
-                                    point: {
-                                        radius: 4,
-                                        hoverRadius: 6,
-                                        hoverBorderWidth: 2
-                                    }
+                                    line: { borderWidth: 2 },
+                                    point: { radius: 4, hoverRadius: 6, hoverBorderWidth: 2 }
                                 },
-                                animation: {
-                                    duration: 1000,
-                                    easing: 'easeInOutQuart'
-                                },
-                                layout: {
-                                    padding: {
-                                        top: 10,
-                                        right: 15,
-                                        bottom: 10,
-                                        left: 15
-                                    }
-                                },
+                                animation: { duration: 1000, easing: 'easeInOutQuart' },
+                                layout: { padding: { top: 10, right: 15, bottom: 10, left: 15 } },
                                 onHover: (event, chartElement) => {
                                     event.native.target.style.cursor = chartElement[0] ? 'pointer' : 'default';
                                 },
@@ -588,73 +499,21 @@
                 } catch (e) {
                     console.error('Error initializing chart:', e);
                 }
-                {% endif %}  <!-- Close if chart_data is defined -->
+                {% endif %}
                 
-                // Form submission and HTMX handlers
-                document.addEventListener('DOMContentLoaded', function() {
-                    const form = document.querySelector('form');
-                    const loadingElement = document.getElementById('loading');
-                    
-                    if (form) {
-                        // Handle form submission
-                        form.addEventListener('submit', function() {
-                            // Show loading indicator
-                            if (loadingElement) {
-                                loadingElement.classList.remove('hidden');
-                            }
-                            
-                            // Disable submit button and show loading spinner
-                            const button = this.querySelector('button[type="submit"]');
-                            const loadingSpinner = button ? button.querySelector('.loading') : null;
-                            if (button && loadingSpinner) {
-                                loadingSpinner.classList.remove('hidden');
-                                button.disabled = true;
-                            }
-                        });
-                    }
-                    
-                    // Handle HTMX after request
-                    document.body.addEventListener('htmx:afterRequest', function(evt) {
-                        // Hide loading indicator
-                        if (loadingElement) {
-                            loadingElement.classList.add('hidden');
-                        }
-                        
-                        // Re-enable submit button and hide loading spinner
-                        const button = document.querySelector('button[type="submit"]');
-                        if (button) {
-                            const loadingSpinner = button.querySelector('.loading');
-                            if (loadingSpinner) {
-                                loadingSpinner.classList.add('hidden');
-                            }
-                            button.disabled = false;
-                        }
-                        
-                        // Scroll to results if successful
-                        if (evt.detail && evt.detail.successful) {
-                            const results = document.getElementById('results');
-                            if (results) {
-                                results.scrollIntoView({ behavior: 'smooth' });
-                            }
-                        }
-                    });
-                    
-                    // Initialize date picker with min date
-                    const dateInput = document.querySelector('input[type="date"]');
-                    if (dateInput && !dateInput.value) {
-                        const today = new Date();
-                        const nextWeek = new Date(today);
-                        nextWeek.setDate(today.getDate() + 7);
-                        const nextWeekFormatted = nextWeek.toISOString().split('T')[0];
-                        dateInput.value = nextWeekFormatted;
-                        
-                        // Set min date to today
-                        const todayFormatted = today.toISOString().split('T')[0];
-                        dateInput.min = todayFormatted;
-                    }
-                });
-            </script>
-        {% endif %}  <!-- Close if data block -->
-    </div>  <!-- Close container div -->
+                // Initialize date picker with min date
+                const dateInput = document.querySelector('input[type="date"]');
+                if (dateInput && !dateInput.value) {
+                    const today = new Date();
+                    const nextWeek = new Date(today);
+                    nextWeek.setDate(today.getDate() + 7);
+                    const nextWeekFormatted = nextWeek.toISOString().split('T')[0];
+                    dateInput.value = nextWeekFormatted;
+                    const todayFormatted = today.toISOString().split('T')[0];
+                    dateInput.min = todayFormatted;
+                }
+            });
+        </script>
+    </div>
 </body>
 </html>
